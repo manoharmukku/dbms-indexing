@@ -13,13 +13,14 @@ typedef struct treeNode {
 	int keyCount;
 	ull offset[N];
 	datatype key[N-1];
-}Node;
+	ull parent;
+} Node;
 
 typedef struct auxTreeNode {
 	int keyCount;
 	ull offset[N+1];
 	datatype key[N];
-}auxNode;
+} auxNode;
 
 Node* findUtil(Node* root, datatype key) {
 	// Set result as root node
@@ -91,6 +92,24 @@ bool insertInLeaf(Node* leaf, datatype key, ull recordOffset) {
 	leaf->keyCount++;
 }
 
+bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRight) {
+	// If nodeLeft is the root of the tree
+	if (nodeLeft == *root_ptr) {
+		// Create a new node containing pointers nodeLeft, nodeRight and value key
+		Node* newNode = (Node*)malloc(sizeof(Node));
+		newNode->offset[0] = nodeLeft;
+		newNode->offset[1] = nodeRight;
+		newNode->key[0] = key;
+		newNode->keyCount = 1;
+		newNode->isLeaf = FALSE;
+		// Make newNode the root of the tree
+		*root_ptr = newNode;
+	}
+	else {
+
+	}
+}
+
 bool insert(Node** root_ptr, datatype key, ull recordOffset) {
 	if (*root_ptr == NULL) {
 		// If tree is empty, create an empty leaf node which is also the root
@@ -142,7 +161,7 @@ bool insert(Node** root_ptr, datatype key, ull recordOffset) {
 			newLeafNode->keyCount = N - ceil(N/2);
 			newLeafNode->isLeaf = TRUE;
 			// Insert in parent smallest key value of newLeafNode
-			insertInParent(leafNode, newLeafNode->key[0], newLeafNode);
+			insertInParent(root_ptr, leafNode, newLeafNode->key[0], newLeafNode);
 		}
 	}
 }
