@@ -106,7 +106,23 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 		*root_ptr = newNode;
 	}
 	else {
-
+		Node* parent = nodeLeft->parent;
+		// If parent has less than N pointers
+		if (parent->keyCount < N-1) {
+			// Insert key, nodeRight in parent just after nodeLeft
+			// Find i for which parent->offset[i] = nodeLeft;
+			int i;
+			for (i = 0; i <= parent->keyCount; i++)
+				if (parent->offset[i] == nodeLeft) break;
+			// Move right all keys and offsets after i by one position
+			int j;
+			for (j = parent->keyCount; j > i; j--) {
+				parent->offset[j+1] = parent->offset[j];
+				parent->key[j] = parent->key[j-1];
+			}
+			parent->key[i] = key;
+			parent->offset[i+1] = nodeRight;
+		}
 	}
 }
 
