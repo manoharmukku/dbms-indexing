@@ -110,7 +110,7 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 		// If parent has less than N pointers
 		if (parent->keyCount < N-1) {
 			// Insert key, nodeRight in parent just after nodeLeft
-			// Find i for which parent->offset[i] = nodeLeft;
+			// Find i for which parent->offset[i] = nodeLeft
 			int i;
 			for (i = 0; i <= parent->keyCount; i++)
 				if (parent->offset[i] == nodeLeft) break;
@@ -120,8 +120,58 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 				parent->offset[j+1] = parent->offset[j];
 				parent->key[j] = parent->key[j-1];
 			}
+			// Insert (key, nodeRight) after nodeLeft
 			parent->key[i] = key;
 			parent->offset[i+1] = nodeRight;
+			parent->keyCount++;
+		}
+		else {
+			// Else split parent and recurse
+			// Create auxNode
+			auxNode* temp = (auxNode*)malloc(sizeof(auxNode));
+			// Copy parent to temp
+			int i;
+			for (i = 0; i < parent->keyCount; i++) {
+				temp->offset[i] = parent->offset[i];
+				temp->key[i] = parent->key[i];
+			}
+			temp->offset[i] = parent->key[i];
+			temp->keyCount = parent->keyCount;
+			// Insert (key, nodeRight) into temp just after nodeLeft
+			// Find i for which temp->offset[i] = nodeLeft
+			for (i = 0; i <= temp->keyCount; i++)
+				if (temp->offset[i] == nodeLeft) break;
+			// Move right all keys and offsets after i by one position
+			int j;
+			for (j = temp->keyCount; j > i; j--) {
+				temp->offset[j+1] = temp->offset[j];
+				temp->key[j] = temp->key[j-1];
+			}
+			// Insert (key, nodeRight) after nodeLeft
+			temp->key[i] = key;
+			temp->offset[i+1] = nodeRight;
+			temp->keyCount++;
+			// Create new node newParent
+			Node* newParent = (Node*)malloc(sizeof(newParent));
+			// Copy temp->offset[0] to temp->offset[ceil(n/2)-1] into parent
+			for (i = 0; i < ceil(N/2)-1; i++) {
+				parent->offset[i] = temp->offset[i];
+				parent->key[i] = temp->key[i];
+			}
+			parent->offset[i] = temp->offset[i];
+			parent->keyCount = ceil(N/2) - 1;
+			// Let newKey = temp->key[ceil(n/2)-1]
+			datatype newKey = temp->key[i];
+			// Copy temp->offset[ceil(n/2)] to temp->offset[n] into newParent
+			for (i = ceil(N/2); i < N; i++) {
+				newParent->offset[i-ceil(N/2)] = temp->offset[i];
+				newParent->key[i-ceil(N/2)] = temp->key[i];
+			}
+			newParent->offset[i-ceil(N/2)] = temp->offset[i];
+			newParent->keyCount = N - ceil(N/2);
+			newParent->isLeaf = FALSE;
+			// Call insert_in_parent recursively for parent and newParent with newKey
+			insertInParent(root_ptr, parent, newKey, newParent);
 		}
 	}
 }
@@ -176,7 +226,9 @@ bool insert(Node** root_ptr, datatype key, ull recordOffset) {
 			}
 			newLeafNode->keyCount = N - ceil(N/2);
 			newLeafNode->isLeaf = TRUE;
-			// Insert in parent smallest key value of newLeafNode
+			// Free temp
+			free(temp);
+			// Insert in parent the smallest key value of newLeafNode
 			insertInParent(root_ptr, leafNode, newLeafNode->key[0], newLeafNode);
 		}
 	}
