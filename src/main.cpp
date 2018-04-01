@@ -1,14 +1,15 @@
 #include <iostream>
+#include <stdio.h>
 #include <stdlib.h>
 #include <fstream>
+#include <assert.h>
 
 #define ull unsigned long long
 #define datatype int
 #define N 4
+#define NODE_SIZE (N * 8 + (N-1) * sizeof(datatype))
 
 using namespace std;
-
-Parent* parentsList = (Parent*)malloc(25*N, sizeof(Parent));
 
 typedef struct {
 	bool isLeaf;
@@ -29,10 +30,12 @@ typedef struct {
 	bool end;
 } Parent;
 
-Node* findUtil(Node* root, datatype key) {
+Parent* parentsList = (Parent*)calloc(25*N, sizeof(Parent));
+
+Node* findUtil(Node* root, datatype key, FILE* file) {
 	// Set result as root node
 	Node* result = root;
-	// Save parent information
+	// Save parent information for root node in parentsList
 	int i = 0;
 	parentsList[i].node = result;
 	parentsList[i].parent = 0;
@@ -80,7 +83,7 @@ Node* findUtil(Node* root, datatype key) {
 	return result;
 }
 
-ull find(Node* root, datatype key) {
+ull find(Node* root, datatype key, FILE* file) {
 	Node* leafNode = findUtil(root, key);
 
 	// Find the least i such that leafNode->key[i] = key
@@ -144,7 +147,7 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 	// If nodeLeft is the root of the tree
 	if (nodeLeft == *root_ptr) {
 		// Create a new node containing pointers nodeLeft, nodeRight and value key
-		Node* newNode = (Node*)malloc(sizeof(Node));
+		Node* newNode = (Node*)calloc(1, sizeof(Node));
 		newNode->offset[0] = nodeLeft;
 		newNode->offset[1] = nodeRight;
 		newNode->key[0] = key;
@@ -176,7 +179,7 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 		else {
 			// Else split parent and recurse
 			// Create auxNode
-			auxNode* temp = (auxNode*)malloc(sizeof(auxNode));
+			auxNode* temp = (auxNode*)calloc(1, sizeof(auxNode));
 			// Copy parent to temp
 			int i;
 			for (i = 0; i < parent->keyCount; i++) {
@@ -200,7 +203,7 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 			temp->offset[i+1] = nodeRight;
 			temp->keyCount++;
 			// Create new node newParent
-			Node* newParent = (Node*)malloc(sizeof(newParent));
+			Node* newParent = (Node*)calloc(1, sizeof(newParent));
 			// Copy temp->offset[0] to temp->offset[ceil(n/2)-1] into parent
 			for (i = 0; i < ceil(N/2)-1; i++) {
 				parent->offset[i] = temp->offset[i];
@@ -224,10 +227,10 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 	}
 }
 
-bool insert(Node** root_ptr, datatype key, ull recordOffset) {
+bool insertUtil(Node** root_ptr, datatype key, ull recordOffset, FILE* indexFile) {
 	if (*root_ptr == NULL) {
 		// If tree is empty, create an empty leaf node which is also the root
-		Node* newNode = (Node*)malloc(sizeof(Node));
+		Node* newNode = (Node*)calloc(1, sizeof(Node));
 		newNode->isLeaf = TRUE;
 		newNode->key[0] = key;
 		newNode->offset[0] = recordOffset;
@@ -245,7 +248,7 @@ bool insert(Node** root_ptr, datatype key, ull recordOffset) {
 		else {
 			// Else leafNode had n-1 key values already, split it
 			// Copy leafNode into auxNode which can hold n (pointer, key) values
-			auxNode* temp = (auxNode*)malloc(sizeof(auxNode));
+			auxNode* temp = (auxNode*)calloc(1, sizeof(auxNode));
 			int i;
 			for (i = 0; i < N-1; i++) {
 				temp->key[i] = leafNode->key[i];
@@ -256,7 +259,7 @@ bool insert(Node** root_ptr, datatype key, ull recordOffset) {
 			insertInLeaf(temp, key, recordOffset);
 
 			// Create new leaf node
-			Node* newLeafNode = (Node*)malloc(sizeof(Node));
+			Node* newLeafNode = (Node*)calloc(1, sizeof(Node));
 			// Make newLeafNode as next node to leafNode
 			newLeafNode->offset[N-1] = leafNode->offset[N-1];
 			leafNode->offset[N-1] = newLeafNode;
@@ -280,6 +283,66 @@ bool insert(Node** root_ptr, datatype key, ull recordOffset) {
 			insertInParent(root_ptr, leafNode, newLeafNode->key[0], newLeafNode);
 		}
 	}
+}
+
+void write_index_metadata_to_file(FILE* indexFile) {
+	ull no_records = 0; // Initially no records
+	int size_of_node = NODE_SIZE; // Size of each node in the tree
+	ull root_node_number = 0; // Initially there is no root
+
+	fwrite(&no_records, sizeof(ull), 1, indexFile);
+	fwrite(&size_of_node, sizeof(int), 1, indexFile);
+	fwrite(&root_node_number, sizeof(ull), 1, indexFile);
+}
+
+ull getRootNodeNumber(FILE* indexFile) {
+	ull root_node_number;
+	fseek(indexFile, sizeof(ull) + sizeof(int), SEEK_SET);
+	fread(&root_node_number, sizeof(ull), 1, indexFile);
+	return root_node_number;
+}
+
+long getPositionToSeekInFile(ull record_number) {
+	// Sizeof(root_node_number) + sizeof(no_records) + sizeof(size_of_node_variable) +  
+	long position = 2 * sizeof(ull) + sizeof(int) + (record_number - 1) * NODE_SIZE;
+	return position;
+}
+
+void load_record_from_file_into_variable(Node** node, size_t size, FILE* indexFile, ull record_number) {
+	long position = getPositionToSeekInFile(record_number);
+	// Seek to the positon in file from beginning
+	fseek(indexFile, position, SEEK_SET);
+	// Read record at the position into the variable
+	fread(*node, size, 1, indexFile);
+}
+
+bool indexInsert(datatype key, ull recordOffset, char* fileName) {
+	FILE *indexFile = fopen(fileName, "wb+x");
+
+	// If file already exists, open in read/update more
+	if (indexFile == NULL) {
+		indexFile = fopen(fileName, "rb+");
+		assert(indexFile != NULL);
+	}
+	else {
+		// If file does not already exist, write metadata to newly created file
+		write_index_metadata_to_file(indexFile);
+	}
+
+	// Get the root node number from the file
+	ull root_node_number = getRootNodeNumber(indexFile);
+
+	// Create memory for root node and extract that node from the file
+	Node* root;
+	if (root_node_number == 0) {
+		root = NULL;
+	}
+	else {
+		root = (Node*)calloc(1, sizeof(Node));
+		load_record_from_file_into_variable(&root, sizeof(Node), indexFile, root_node_number);
+	}
+
+	insertUtil(root, key, recordOffset);
 }
 
 int main() {
