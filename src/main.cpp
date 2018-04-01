@@ -8,37 +8,73 @@
 
 using namespace std;
 
-typedef struct treeNode {
+Parent* parentsList = (Parent*)malloc(25*N, sizeof(Parent));
+
+typedef struct {
 	bool isLeaf;
 	int keyCount;
 	ull offset[N];
 	datatype key[N-1];
-	ull parent;
 } Node;
 
-typedef struct auxTreeNode {
+typedef struct {
 	int keyCount;
 	ull offset[N+1];
 	datatype key[N];
 } auxNode;
 
+typedef struct {
+	ull node;
+	ull parent;
+	bool end;
+} Parent;
+
 Node* findUtil(Node* root, datatype key) {
 	// Set result as root node
 	Node* result = root;
+	// Save parent information
+	int i = 0;
+	parentsList[i].node = result;
+	parentsList[i].parent = 0;
+	parentsList[i].end = FALSE;
 
 	// While result is not a leaf node
 	while (result->isLeaf == FALSE) {
 		// Find smallest number i such that result->key[i] <= key
-		int i = 0;
-		while (i < result->keyCount && result->key[i] < key)
-			i++;
-		if (i == result->keyCount)
-			result = result->offset[i];
-		else if (key == result->key[i])
-			result = result->offset[i+1];
-		else
-			result = result->offset[i];
+		int j = 0;
+		while (j < result->keyCount && result->key[j] < key)
+			j++;
+		if (j == result->keyCount) {
+			// Save parent information
+			++i;
+			parentsList[i].node = result->offset[j];
+			parentsList[i].parent = result;
+			parentsList[i].end = FALSE;
+
+			result = result->offset[j];
+		}
+		else if (key == result->key[j]) {
+			// Save parent information
+			++i;
+			parentsList[i].node = result->offset[j+1];
+			parentsList[i].parent = result;
+			parentsList[i].end = FALSE;
+
+			result = result->offset[j+1];
+		}
+		else {
+			// Save parent information
+			++i;
+			parentsList[i].node = result->offset[j];
+			parentsList[i].parent = result;
+			parentsList[i].end = FALSE;
+
+			result = result->offset[j];
+		}
 	}
+
+	// Set the last node in parentsList as end
+	parentsList[i].end = TRUE;
 
 	// Return the leaf node 'result' which may contain the given key
 	return result;
@@ -55,6 +91,18 @@ ull find(Node* root, datatype key) {
 		return 0; // Record not found
 	else
 		return leafNode->offset[i]; // Record number in the database file
+}
+
+ull getParent(ull node) {
+	int i = 0;
+	while (parentsList[i].end == FALSE) {
+		if (parentsList[i].node == node)
+			return parentsList[i].parent;
+		++i;
+	}
+	if (parentsList[i].node == node)
+		return parentsList[i].parent;
+	return 0;
 }
 
 bool insertInLeaf(Node* leaf, datatype key, ull recordOffset) {
@@ -106,7 +154,7 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 		*root_ptr = newNode;
 	}
 	else {
-		Node* parent = nodeLeft->parent;
+		ull parent = getParent(nodeLeft);
 		// If parent has less than N pointers
 		if (parent->keyCount < N-1) {
 			// Insert key, nodeRight in parent just after nodeLeft
