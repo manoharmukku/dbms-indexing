@@ -10,12 +10,13 @@ using namespace std;
 
 typedef struct treeNode {
 	bool isLeaf;
-	int keysCount;
+	int keyCount;
 	ull offset[N];
 	datatype key[N-1];
 }Node;
 
 typedef struct auxTreeNode {
+	int keyCount;
 	ull offset[N+1];
 	datatype key[N];
 }auxNode;
@@ -28,9 +29,9 @@ Node* findUtil(Node* root, datatype key) {
 	while (result->isLeaf == FALSE) {
 		// Find smallest number i such that result->key[i] <= key
 		int i = 0;
-		while (i < result->keysCount && result->key[i] < key)
+		while (i < result->keyCount && result->key[i] < key)
 			i++;
-		if (i == result->keysCount)
+		if (i == result->keyCount)
 			result = result->offset[i];
 		else if (key == result->key[i])
 			result = result->offset[i+1];
@@ -47,9 +48,9 @@ ull find(Node* root, datatype key) {
 
 	// Find the least i such that leafNode->key[i] = key
 	int i = 0;
-	while (i < leafNode->keysCount && leafNode->key[i] < key)
+	while (i < leafNode->keyCount && leafNode->key[i] < key)
 		i++;
-	if (i == leafNode->keysCount || leafNode->key[i] > key)
+	if (i == leafNode->keyCount || leafNode->key[i] > key)
 		return 0; // Record not found
 	else
 		return leafNode->offset[i]; // Record number in the database file
@@ -66,8 +67,6 @@ bool insertInLeaf(Node* leaf, datatype key, ull recordOffset) {
 		// Now insert given key and recordOffset at the first locations
 		leaf->key[0] = key;
 		leaf->offset[0] = recordOffset;
-		// Increase keyCount by 1
-		leaf->keyCount++;
 	}
 	else {
 		// Find largest i such that leaf->key[i] < key and insert after that
@@ -87,18 +86,19 @@ bool insertInLeaf(Node* leaf, datatype key, ull recordOffset) {
 			leaf->key[i] = key;
 			leaf->offset[i] = recordOffset;
 		}
-		// Increment keyCount by 1
-		leaf->keyCount++;
 	}
+	// Increment keyCount by 1
+	leaf->keyCount++;
 }
 
 bool insert(Node** root_ptr, datatype key, ull recordOffset) {
-	// If tree is empty, create an empty leaf node which is also the root
-	Node* newNode = (Node*)malloc(sizeof(Node));
 	if (*root_ptr == NULL) {
+		// If tree is empty, create an empty leaf node which is also the root
+		Node* newNode = (Node*)malloc(sizeof(Node));
 		newNode->isLeaf = TRUE;
 		newNode->key[0] = key;
 		newNode->offset[0] = recordOffset;
+		// Set root to the new node
 		*root_ptr = newNode;
 	}
 	else {
@@ -118,6 +118,31 @@ bool insert(Node** root_ptr, datatype key, ull recordOffset) {
 				temp->key[i] = leafNode->key[i];
 				temp->offset[i] = leafNode->offset[i];
 			}
+			temp->keyCount = N-1;
+			// Now insert into temp the given key and offset
+			insertInLeaf(temp, key, recordOffset);
+
+			// Create new leaf node
+			Node* newLeafNode = (Node*)malloc(sizeof(Node));
+			// Make newLeafNode as next node to leafNode
+			newLeafNode->offset[N-1] = leafNode->offset[N-1];
+			leafNode->offset[N-1] = newLeafNode;
+
+			// Copy temp->offset[0] to temp->key[ceil(N/2)-1] into leafNode starting at leafNode->offset[0]
+			for (i = 0; i <= ceil(N/2)-1; i++) {
+				leafNode->key[i] = temp->key[i];
+				leafNode->offset[i] = leafNode->offset[i];
+				leafNode->keyCount = ceil(N/2);
+			}
+			// Copy temp->offset[ceil(n/2)] to temp->key[n-1] into newLeafNode starting at newLeafNode->offset[0]
+			for (i = ceil(N/2); i <= N-1; i++) {
+				newLeafNode->offset[i-ceil(N/2)] = temp->offset[i];
+				newLeafNode->key[i-ceil(N/2)] = temp->key[i];
+			}
+			newLeafNode->keyCount = N - ceil(N/2);
+			newLeafNode->isLeaf = TRUE;
+			// Insert in parent smallest key value of newLeafNode
+			insertInParent(leafNode, newLeafNode->key[0], newLeafNode);
 		}
 	}
 }
