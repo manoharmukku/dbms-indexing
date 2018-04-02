@@ -1,15 +1,11 @@
-#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <fstream>
 #include <assert.h>
 
 #define ull unsigned long long
 #define datatype int
 #define N 4
 #define NODE_SIZE (N * 8 + (N-1) * sizeof(datatype))
-
-using namespace std;
 
 typedef struct {
 	bool isLeaf;
@@ -32,14 +28,62 @@ typedef struct {
 
 Parent* parentsList = (Parent*)calloc(25*N, sizeof(Parent));
 
-Node* findUtil(Node* root, datatype key, FILE* file) {
+void write_index_metadata_to_file(FILE* indexFile) {
+	ull no_records = 0; // Initially no records
+	int size_of_node = NODE_SIZE; // Size of each node in the tree
+	ull root_node_number = 0; // Initially there is no root
+
+	fwrite(&no_records, sizeof(ull), 1, indexFile);
+	fwrite(&size_of_node, sizeof(int), 1, indexFile);
+	fwrite(&root_node_number, sizeof(ull), 1, indexFile);
+}
+
+ull getRootNodeNumber(FILE* indexFile) {
+	ull root_node_number;
+	fseek(indexFile, sizeof(ull) + sizeof(int), SEEK_SET);
+	fread(&root_node_number, sizeof(ull), 1, indexFile);
+	return root_node_number;
+}
+
+long getPositionToSeekInFile(ull record_number) {
+	// Sizeof(root_node_number) + sizeof(no_records) + sizeof(size_of_node_variable) +  
+	long position = 2 * sizeof(ull) + sizeof(int) + (record_number - 1) * NODE_SIZE;
+	return position;
+}
+
+void load_record_from_file_into_variable(Node** node, size_t size, FILE* indexFile, ull record_number) {
+	long position = getPositionToSeekInFile(record_number);
+	// Seek to the positon in file from beginning
+	fseek(indexFile, position, SEEK_SET);
+	// Read record at the position into the variable
+	fread(*node, size, 1, indexFile);
+}
+
+ull get_no_of_records_in_index_file(FILE* indexFile) {
+	ull no_records;
+	fread(&no_records, sizeof(ull), 1, indexFile);
+	return no_records;
+}
+
+void update_root_node_number(FILE* indexFile, ull newNumber) {
+	fseek(indexFile, sizeof(ull) + sizeof(int), SEEK_SET);
+	fwrite(&newNumber, sizeof(ull), 1, indexFile);
+}
+
+ull findUtil(Node* root, datatype key, FILE* file) {
 	// Set result as root node
 	Node* result = root;
+	ull current_node_number = getRootNodeNumber(indexFile);
+	ull previous_node_number = 0;
+
 	// Save parent information for root node in parentsList
 	int i = 0;
-	parentsList[i].node = result;
-	parentsList[i].parent = 0;
+	parentsList[i].node = current_node_number;
+	parentsList[i].parent = previous_node_number;
 	parentsList[i].end = FALSE;
+
+	// Create a temporary memory for storing the retrieved node from file
+	Node* temp = (Node*)calloc(1, sizeof(Node));
 
 	// While result is not a leaf node
 	while (result->isLeaf == FALSE) {
@@ -48,52 +92,111 @@ Node* findUtil(Node* root, datatype key, FILE* file) {
 		while (j < result->keyCount && result->key[j] < key)
 			j++;
 		if (j == result->keyCount) {
+			previous_node_number = current_node_number;
+			current_node_number = result->offset[j];
+
 			// Save parent information
 			++i;
-			parentsList[i].node = result->offset[j];
-			parentsList[i].parent = result;
+			parentsList[i].node = current_node_number;
+			parentsList[i].parent = previous_node_number;
 			parentsList[i].end = FALSE;
 
-			result = result->offset[j];
+			// Get the current node from file and store it in temp
+			load_record_from_file_into_variable(&temp, sizeof(Node), indexFile, current_node_number);
+
+			// Update result
+			result = temp;
 		}
 		else if (key == result->key[j]) {
+			previous_node_number = current_node_number;
+			current_node_number = result->offset[j+1];
+
 			// Save parent information
 			++i;
-			parentsList[i].node = result->offset[j+1];
-			parentsList[i].parent = result;
+			parentsList[i].node = current_node_number;
+			parentsList[i].parent = previous_node_number;
 			parentsList[i].end = FALSE;
 
-			result = result->offset[j+1];
+			// Get the current node from file and store it in temp
+			load_record_from_file_into_variable(&temp, sizeof(Node), indexFile, current_node_number);
+
+			// Update result
+			result = temp;
 		}
 		else {
+			previous_node_number = current_node_number;
+			current_node_number = result->offset[j];
+
 			// Save parent information
 			++i;
-			parentsList[i].node = result->offset[j];
-			parentsList[i].parent = result;
+			parentsList[i].node = current_node_number;
+			parentsList[i].parent = previous_node_number;
 			parentsList[i].end = FALSE;
 
-			result = result->offset[j];
+			// Get the current node from file and store it in temp
+			load_record_from_file_into_variable(&temp, sizeof(Node), indexFile, current_node_number);
+
+			// Update result
+			result = temp;
 		}
 	}
 
 	// Set the last node in parentsList as end
 	parentsList[i].end = TRUE;
 
+	free(temp);
+
 	// Return the leaf node 'result' which may contain the given key
-	return result;
+	return current_node_number;
 }
 
-ull find(Node* root, datatype key, FILE* file) {
-	Node* leafNode = findUtil(root, key);
+ull indexFindUtil(Node* root, datatype key, FILE* file) {
+	// Get the record number of the leaf node which may contain the given key
+	ull record_number = findUtil(root, key, file);
+
+	// Create memory for leafNode
+	Node* leafNode = (Node*)calloc(1, sizeof(Node));
+
+	// Retrieve the node from the file
+	load_record_from_file_into_variable(&leafNode, sizeof(Node), file, record_number);
+
+	ull record_offset;
 
 	// Find the least i such that leafNode->key[i] = key
 	int i = 0;
 	while (i < leafNode->keyCount && leafNode->key[i] < key)
 		i++;
 	if (i == leafNode->keyCount || leafNode->key[i] > key)
-		return 0; // Record not found
+		record_offset = 0; // Record not found
 	else
-		return leafNode->offset[i]; // Record number in the database file
+		record_offset = leafNode->offset[i]; // Record number in the database file
+
+	return record_offset;
+}
+
+ull indexFind(datatype key, char* fileName) {
+	FILE* indexFile = fopen(fileName, "rb+");
+
+	if (NULL == indexFile) {
+		return 0; // File does not exist or error opening file
+	}
+
+	// Get the root node number from the file
+	ull root_node_number = getRootNodeNumber(indexFile);
+
+	// Create memory for root node and extract that node from the file
+	Node* root;
+	if (root_node_number == 0) {
+		root = NULL;
+	}
+	else {
+		root = (Node*)calloc(1, sizeof(Node));
+		load_record_from_file_into_variable(&root, sizeof(Node), indexFile, root_node_number);
+	}
+
+	ull record_offset = indexFindUtil(root, key, indexFile);
+
+	return record_offset;
 }
 
 ull getParent(ull node) {
@@ -227,19 +330,31 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 	}
 }
 
-bool insertUtil(Node** root_ptr, datatype key, ull recordOffset, FILE* indexFile) {
-	if (*root_ptr == NULL) {
+bool insertUtil(Node* root, datatype key, ull recordOffset, FILE* indexFile) {
+	if (root == NULL) {
 		// If tree is empty, create an empty leaf node which is also the root
 		Node* newNode = (Node*)calloc(1, sizeof(Node));
 		newNode->isLeaf = TRUE;
 		newNode->key[0] = key;
 		newNode->offset[0] = recordOffset;
-		// Set root to the new node
-		*root_ptr = newNode;
+		newNode->offset[N-1] = 0;
+		newNode->keyCount = 1;
+
+		// Get number of records in index file
+		ull no_records = get_no_of_records_in_index_file(indexFile);
+
+		// Insert new node at the last of the index file
+		fseek(indexFile, getPositionToSeekInFile(no_records+1), SEEK_SET);
+		fwrite(newNode, sizeof(Node), 1, indexFile);
+
+		// Make this newNode the root, i.e. update the root number in index file
+		update_root_node_number(indexFile, no_records+1);
+
+		free(newNode);
 	}
 	else {
 		// Else find the leaf node that should contain the given key
-		Node* leafNode = findUtil(*root_ptr, key);
+		Node* leafNode = findUtil(root, key);
 
 		// If this leaf node contains n-1 key values then insert in this leaf node
 		if (leafNode->keyCount < N-1) {
@@ -283,37 +398,6 @@ bool insertUtil(Node** root_ptr, datatype key, ull recordOffset, FILE* indexFile
 			insertInParent(root_ptr, leafNode, newLeafNode->key[0], newLeafNode);
 		}
 	}
-}
-
-void write_index_metadata_to_file(FILE* indexFile) {
-	ull no_records = 0; // Initially no records
-	int size_of_node = NODE_SIZE; // Size of each node in the tree
-	ull root_node_number = 0; // Initially there is no root
-
-	fwrite(&no_records, sizeof(ull), 1, indexFile);
-	fwrite(&size_of_node, sizeof(int), 1, indexFile);
-	fwrite(&root_node_number, sizeof(ull), 1, indexFile);
-}
-
-ull getRootNodeNumber(FILE* indexFile) {
-	ull root_node_number;
-	fseek(indexFile, sizeof(ull) + sizeof(int), SEEK_SET);
-	fread(&root_node_number, sizeof(ull), 1, indexFile);
-	return root_node_number;
-}
-
-long getPositionToSeekInFile(ull record_number) {
-	// Sizeof(root_node_number) + sizeof(no_records) + sizeof(size_of_node_variable) +  
-	long position = 2 * sizeof(ull) + sizeof(int) + (record_number - 1) * NODE_SIZE;
-	return position;
-}
-
-void load_record_from_file_into_variable(Node** node, size_t size, FILE* indexFile, ull record_number) {
-	long position = getPositionToSeekInFile(record_number);
-	// Seek to the positon in file from beginning
-	fseek(indexFile, position, SEEK_SET);
-	// Read record at the position into the variable
-	fread(*node, size, 1, indexFile);
 }
 
 bool indexInsert(datatype key, ull recordOffset, char* fileName) {
