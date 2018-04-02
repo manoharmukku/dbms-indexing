@@ -317,28 +317,62 @@ bool insertInLeaf(ull leaf_node_number, datatype key, ull recordOffset, FILE* in
 	free(leaf);
 }
 
-bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRight) {
+bool insertInParent(ull left_node_number, datatype key, ull right_node_number, FILE* indexFile) {
+	// Create memory for left node and right node
+	Node* nodeLeft = (Node*)calloc(1, sizeof(Node));
+	Node* nodeRight = (Node*)calloc(1, sizeof(Node));
+
+	// Load nodes from file at left_node_number and right_node_number
+	load_record_from_file_into_variable(&nodeLeft, sizeof(Node), indexFile, left_node_number);
+	load_record_from_file_into_variable(&nodeRight, sizeof(Node), indexFile, right_node_number);
+
+	// Get root_node_number
+	ull root_node_number = getRootNodeNumber(indexFile);
+
 	// If nodeLeft is the root of the tree
-	if (nodeLeft == *root_ptr) {
-		// Create a new node containing pointers nodeLeft, nodeRight and value key
+	if (left_node_number == root_node_number) {
+		// Create a new node containing pointers to nodeLeft, nodeRight and value key
 		Node* newNode = (Node*)calloc(1, sizeof(Node));
-		newNode->offset[0] = nodeLeft;
-		newNode->offset[1] = nodeRight;
+		newNode->offset[0] = left_node_number;
+		newNode->offset[1] = right_node_number;
 		newNode->key[0] = key;
 		newNode->keyCount = 1;
 		newNode->isLeaf = FALSE;
-		// Make newNode the root of the tree
-		*root_ptr = newNode;
+
+		// Get new node number
+		ull new_node_number = get_no_of_records_in_index_file(indexFile) + 1;
+
+		// Insert newNode into file at new_node_number
+		write_record_to_file_from_variable(&newNode, sizeof(Node), indexFile, new_node_number);
+
+		// Increase number of records in file count by 1
+		update_no_of_records_in_index_file(indexFile, 1);
+
+		// Make newNode the root of the tree, i.e. update the root node nubmer in the file
+		update_root_node_number(indexFile, new_node_number);
+
+		free(newNode);
+		free(nodeLeft);
+		free(nodeRight);
 	}
 	else {
-		ull parent = getParent(nodeLeft);
+		// Get parent node number of left node
+		ull parent_node_number = getParent(left_node_number);
+
+		// Create memory for parent node
+		Node* parent = (Node*)calloc(1, sizeof(Node));
+
+		// Load node at parent node number from file into parent
+		load_record_from_file_into_variable(&parent, sizeof(Node), indexFile, parent_node_number);
+
 		// If parent has less than N pointers
 		if (parent->keyCount < N-1) {
-			// Insert key, nodeRight in parent just after nodeLeft
+			// Insert (key, nodeRight) in parent just after nodeLeft
 			// Find i for which parent->offset[i] = nodeLeft
 			int i;
 			for (i = 0; i <= parent->keyCount; i++)
-				if (parent->offset[i] == nodeLeft) break;
+				if (parent->offset[i] == left_node_number)
+					break;
 			// Move right all keys and offsets after i by one position
 			int j;
 			for (j = parent->keyCount; j > i; j--) {
@@ -347,37 +381,53 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 			}
 			// Insert (key, nodeRight) after nodeLeft
 			parent->key[i] = key;
-			parent->offset[i+1] = nodeRight;
+			parent->offset[i+1] = right_node_number;
 			parent->keyCount++;
+
+			// Write parent back into file at parent_node_number
+			write_record_to_file_from_variable(&parent, sizeof(Node), indexFile, parent_node_number);
+
+			free(parent);
+			free(nodeLeft);
+			free(nodeRight);
 		}
-		else {
-			// Else split parent and recurse
+		else { // Else split parent and recurse
 			// Create auxNode
 			auxNode* temp = (auxNode*)calloc(1, sizeof(auxNode));
+
 			// Copy parent to temp
 			int i;
 			for (i = 0; i < parent->keyCount; i++) {
 				temp->offset[i] = parent->offset[i];
 				temp->key[i] = parent->key[i];
 			}
-			temp->offset[i] = parent->key[i];
+			temp->offset[i] = parent->offset[i];
 			temp->keyCount = parent->keyCount;
+
 			// Insert (key, nodeRight) into temp just after nodeLeft
 			// Find i for which temp->offset[i] = nodeLeft
 			for (i = 0; i <= temp->keyCount; i++)
-				if (temp->offset[i] == nodeLeft) break;
+				if (temp->offset[i] == left_node_number) 
+					break;
+
 			// Move right all keys and offsets after i by one position
 			int j;
 			for (j = temp->keyCount; j > i; j--) {
 				temp->offset[j+1] = temp->offset[j];
 				temp->key[j] = temp->key[j-1];
 			}
-			// Insert (key, nodeRight) after nodeLeft
+
+			// Insert (key, nodeRight) after nodeLeft in temp
 			temp->key[i] = key;
-			temp->offset[i+1] = nodeRight;
+			temp->offset[i+1] = right_node_number;
 			temp->keyCount++;
+
 			// Create new node newParent
 			Node* newParent = (Node*)calloc(1, sizeof(newParent));
+
+			// Get new parent node number
+			ull new_parent_node_number = get_no_of_records_in_index_file(indexFile) + 1;
+
 			// Copy temp->offset[0] to temp->offset[ceil(n/2)-1] into parent
 			for (i = 0; i < ceil(N/2)-1; i++) {
 				parent->offset[i] = temp->offset[i];
@@ -385,8 +435,13 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 			}
 			parent->offset[i] = temp->offset[i];
 			parent->keyCount = ceil(N/2) - 1;
+
+			// Write parent back into file at parent_node_number
+			write_record_to_file_from_variable(&parent, sizeof(Node), indexFile, parent_node_number);
+
 			// Let newKey = temp->key[ceil(n/2)-1]
 			datatype newKey = temp->key[i];
+
 			// Copy temp->offset[ceil(n/2)] to temp->offset[n] into newParent
 			for (i = ceil(N/2); i < N; i++) {
 				newParent->offset[i-ceil(N/2)] = temp->offset[i];
@@ -395,8 +450,21 @@ bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRig
 			newParent->offset[i-ceil(N/2)] = temp->offset[i];
 			newParent->keyCount = N - ceil(N/2);
 			newParent->isLeaf = FALSE;
+
+			// Write new parent into file at new_parent_node_number
+			write_record_to_file_from_variable(&newParent, sizeof(Node), indexFile, new_parent_node_number);
+
+			// Increase number of records in file count by 1
+			update_no_of_records_in_index_file(indexFile, 1);
+
+			free(temp);
+			free(parent);
+			free(newParent);
+			free(nodeLeft);
+			free(nodeRight);
+
 			// Call insert_in_parent recursively for parent and newParent with newKey
-			insertInParent(root_ptr, parent, newKey, newParent);
+			insertInParent(parent_node_number, newKey, new_parent_node_number, indexFile);
 		}
 	}
 }
@@ -490,7 +558,7 @@ bool insertUtil(Node* root, datatype key, ull recordOffset, FILE* indexFile) {
 			free(newLeafNode);
 
 			// Insert in parent the smallest key value of newLeafNode
-			insertInParent(root, leaf_node_number, newKey, new_leaf_node_number);
+			insertInParent(leaf_node_number, newKey, new_leaf_node_number, indexFile);
 		}
 	}
 }
