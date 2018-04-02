@@ -2,12 +2,15 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <iostream>
+#include <cmath>
 using namespace std;
 
 #define ull unsigned long long
 #define datatype int
 #define N 4
 #define NODE_SIZE (N * 8 + (N-1) * sizeof(datatype))
+#define TRUE true
+#define FALSE false 
 
 typedef struct {
 	bool isLeaf;
@@ -71,7 +74,7 @@ void load_record_from_file_into_variable(Node** node, size_t size, FILE* indexFi
 	fread(*node, size, 1, indexFile);
 }
 
-ull update_no_of_records_in_index_file(FILE* indexFile, int count) {
+void update_no_of_records_in_index_file(FILE* indexFile, int count) {
 	ull no_records;
 	fread(&no_records, sizeof(ull), 1, indexFile);
 	no_records += count;
@@ -89,7 +92,7 @@ void update_root_node_number(FILE* indexFile, ull newNumber) {
 	fwrite(&newNumber, sizeof(ull), 1, indexFile);
 }
 
-ull findUtil(Node* root, datatype key, FILE* file) {
+ull findUtil(Node* root, datatype key, FILE* indexFile) {
 	// Set result as root node
 	Node* result = root;
 	ull current_node_number = getRootNodeNumber(indexFile);
@@ -230,7 +233,7 @@ ull getParent(ull node) {
 	return 0; // Node not found
 }
 
-bool insertInLeafUtil(Node* leaf, datatype key, ull recordOffset) {
+bool insertInLeafUtil(auxNode* leaf, datatype key, ull recordOffset) {
 	if (key < leaf->key[0]) {
 		// Move all the keys and offsets one positions to the right
 		int i;
@@ -263,6 +266,8 @@ bool insertInLeafUtil(Node* leaf, datatype key, ull recordOffset) {
 	}
 	// Increment keyCount by 1
 	leaf->keyCount++;
+
+	return true;
 }
 
 bool insertInLeaf(ull leaf_node_number, datatype key, ull recordOffset, FILE* indexFile) {
@@ -315,6 +320,8 @@ bool insertInLeaf(ull leaf_node_number, datatype key, ull recordOffset, FILE* in
 	}
 
 	free(leaf);
+
+	return true;
 }
 
 bool insertInParent(ull left_node_number, datatype key, ull right_node_number, FILE* indexFile) {
@@ -428,27 +435,27 @@ bool insertInParent(ull left_node_number, datatype key, ull right_node_number, F
 			// Get new parent node number
 			ull new_parent_node_number = get_no_of_records_in_index_file(indexFile) + 1;
 
-			// Copy temp->offset[0] to temp->offset[ceil(n/2)-1] into parent
-			for (i = 0; i < ceil(N/2)-1; i++) {
+			// Copy temp->offset[0] to temp->offset[int(int(ceil(N/2)))-1] into parent
+			for (i = 0; i < int(int(ceil(N/2)))-1; i++) {
 				parent->offset[i] = temp->offset[i];
 				parent->key[i] = temp->key[i];
 			}
 			parent->offset[i] = temp->offset[i];
-			parent->keyCount = ceil(N/2) - 1;
+			parent->keyCount = int(ceil(N/2)) - 1;
 
 			// Write parent back into file at parent_node_number
 			write_record_to_file_from_variable(&parent, sizeof(Node), indexFile, parent_node_number);
 
-			// Let newKey = temp->key[ceil(n/2)-1]
+			// Let newKey = temp->key[int(ceil(N/2))-1]
 			datatype newKey = temp->key[i];
 
-			// Copy temp->offset[ceil(n/2)] to temp->offset[n] into newParent
-			for (i = ceil(N/2); i < N; i++) {
-				newParent->offset[i-ceil(N/2)] = temp->offset[i];
-				newParent->key[i-ceil(N/2)] = temp->key[i];
+			// Copy temp->offset[int(ceil(N/2))] to temp->offset[n] into newParent
+			for (i = int(ceil(N/2)); i < N; i++) {
+				newParent->offset[i-int(ceil(N/2))] = temp->offset[i];
+				newParent->key[i-int(ceil(N/2))] = temp->key[i];	
 			}
-			newParent->offset[i-ceil(N/2)] = temp->offset[i];
-			newParent->keyCount = N - ceil(N/2);
+			newParent->offset[i-int(ceil(N/2))] = temp->offset[i];
+			newParent->keyCount = N - int(ceil(N/2));
 			newParent->isLeaf = FALSE;
 
 			// Write new parent into file at new_parent_node_number
@@ -467,6 +474,8 @@ bool insertInParent(ull left_node_number, datatype key, ull right_node_number, F
 			insertInParent(parent_node_number, newKey, new_parent_node_number, indexFile);
 		}
 	}
+
+	return true;
 }
 
 bool insertUtil(Node* root, datatype key, ull recordOffset, FILE* indexFile) {
@@ -528,19 +537,19 @@ bool insertUtil(Node* root, datatype key, ull recordOffset, FILE* indexFile) {
 			newLeafNode->offset[N-1] = leafNode->offset[N-1];
 			leafNode->offset[N-1] = new_leaf_node_number;
 
-			// Copy temp->offset[0] to temp->key[ceil(N/2)-1] into leafNode starting at leafNode->offset[0]
-			for (i = 0; i <= ceil(N/2)-1; i++) {
+			// Copy temp->offset[0] to temp->key[int(ceil(N/2))-1] into leafNode starting at leafNode->offset[0]
+			for (i = 0; i <= int(ceil(N/2))-1; i++) {
 				leafNode->key[i] = temp->key[i];
 				leafNode->offset[i] = leafNode->offset[i];
 			}
-			leafNode->keyCount = ceil(N/2);
+			leafNode->keyCount = int(ceil(N/2));
 
-			// Copy temp->offset[ceil(n/2)] to temp->key[n-1] into newLeafNode starting at newLeafNode->offset[0]
-			for (i = ceil(N/2); i <= N-1; i++) {
-				newLeafNode->offset[i-ceil(N/2)] = temp->offset[i];
-				newLeafNode->key[i-ceil(N/2)] = temp->key[i];
+			// Copy temp->offset[int(ceil(N/2))] to temp->key[n-1] into newLeafNode starting at newLeafNode->offset[0]
+			for (i = int(ceil(N/2)); i <= N-1; i++) {
+				newLeafNode->offset[i-int(ceil(N/2))] = temp->offset[i];
+				newLeafNode->key[i-int(ceil(N/2))] = temp->key[i];
 			}
-			newLeafNode->keyCount = N - ceil(N/2);
+			newLeafNode->keyCount = N - int(ceil(N/2));
 			newLeafNode->isLeaf = TRUE;
 
 			// Write the modified leafNode and newLeafNode back into file
@@ -561,6 +570,8 @@ bool insertUtil(Node* root, datatype key, ull recordOffset, FILE* indexFile) {
 			insertInParent(leaf_node_number, newKey, new_leaf_node_number, indexFile);
 		}
 	}
+
+	return true;
 }
 
 bool indexInsert(datatype key, ull recordOffset, char* fileName) {
@@ -589,8 +600,9 @@ bool indexInsert(datatype key, ull recordOffset, char* fileName) {
 		load_record_from_file_into_variable(&root, sizeof(Node), indexFile, root_node_number);
 	}
 
-	insertUtil(root, key, recordOffset);
+	return insertUtil(root, key, recordOffset, indexFile);
 }
+
 
 int main() {
 
