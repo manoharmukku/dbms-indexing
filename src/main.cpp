@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <iostream>
+using namespace std;
 
 #define ull unsigned long long
 #define datatype int
@@ -51,11 +53,21 @@ long getPositionToSeekInFile(ull record_number) {
 	return position;
 }
 
+void write_record_to_file_from_variable(Node** node, size_t size, FILE* indexFile, ull record_number) {
+	long position = getPositionToSeekInFile(record_number);
+
+	// Seek to the position in the file from beginning
+	fseek(indexFile, position, SEEK_SET);
+
+	// Write record to file at the seeked position from the variable
+	fwrite(*node, size, 1, indexFile);
+}
+
 void load_record_from_file_into_variable(Node** node, size_t size, FILE* indexFile, ull record_number) {
 	long position = getPositionToSeekInFile(record_number);
 	// Seek to the positon in file from beginning
 	fseek(indexFile, position, SEEK_SET);
-	// Read record at the position into the variable
+	// Read record from file at the seeked position into the variable
 	fread(*node, size, 1, indexFile);
 }
 
@@ -74,7 +86,7 @@ ull findUtil(Node* root, datatype key, FILE* file) {
 	// Set result as root node
 	Node* result = root;
 	ull current_node_number = getRootNodeNumber(indexFile);
-	ull previous_node_number = 0;
+	ull previous_node_number = 0; // No parent for root
 
 	// Save parent information for root node in parentsList
 	int i = 0;
@@ -146,7 +158,7 @@ ull findUtil(Node* root, datatype key, FILE* file) {
 
 	free(temp);
 
-	// Return the leaf node 'result' which may contain the given key
+	// Return the leaf node's record number in the index file which may contain the given key
 	return current_node_number;
 }
 
@@ -208,10 +220,10 @@ ull getParent(ull node) {
 	}
 	if (parentsList[i].node == node)
 		return parentsList[i].parent;
-	return 0;
+	return 0; // Node not found
 }
 
-bool insertInLeaf(Node* leaf, datatype key, ull recordOffset) {
+bool insertInLeafUtil(Node* leaf, datatype key, ull recordOffset) {
 	if (key < leaf->key[0]) {
 		// Move all the keys and offsets one positions to the right
 		int i;
@@ -244,6 +256,56 @@ bool insertInLeaf(Node* leaf, datatype key, ull recordOffset) {
 	}
 	// Increment keyCount by 1
 	leaf->keyCount++;
+}
+
+bool insertInLeaf(ull leaf_node_number, datatype key, ull recordOffset, FILE* indexFile) {
+	// Create memory for leaf node
+	Node* leaf = (Node*)calloc(1, sizeof(Node));
+
+	// Load from file the node at leaf_node_number into leaf
+	load_record_from_file_into_variable(&leaf, sizeof(Node), indexFile, leaf_node_number);
+
+	if (key < leaf->key[0]) {
+		// Move all the keys and offsets one position to the right
+		int i;
+		for (i = leaf->keyCount-1; i >= 0; i--) {
+			leaf->key[i+1] = leaf->key[i];
+			leaf->offset[i+1] = leaf->offset[i];
+		}
+		// Now insert given key and recordOffset at the first locations
+		leaf->key[0] = key;
+		leaf->offset[0] = recordOffset;
+
+		// Increment keyCount by 1
+		leaf->keyCount++;
+
+		// Write the modified leaf back into file
+		write_record_to_file_from_variable(&leaf, sizeof(Node), indexFile, leaf_node_number);
+	}
+	else {
+		// Find largest i such that leaf->key[i] < key and insert after that
+		int i = 0;
+		while (i < leaf->keyCount && leaf->key[i] < key)
+			i++;
+		if (i == leaf->keyCount) {
+			leaf->key[i] = key;
+			leaf->offset[i] = recordOffset;
+		}
+		else {
+			int j;
+			for (j = leaf->keyCount; j > i; j--) {
+				leaf->key[j] = leaf->key[j-1];
+				leaf->offset[j] = leaf->offset[j-1];
+			}
+			leaf->key[i] = key;
+			leaf->offset[i] = recordOffset;
+		}
+		// Increment keyCount by 1
+		leaf->keyCount++;
+
+		// Write the modified leaf back into file
+		write_record_to_file_from_variable(&leaf, sizeof(Node), indexFile, leaf_node_number);
+	}
 }
 
 bool insertInParent(Node** root_ptr, Node* nodeLeft, datatype key, Node* nodeRight) {
@@ -344,8 +406,7 @@ bool insertUtil(Node* root, datatype key, ull recordOffset, FILE* indexFile) {
 		ull no_records = get_no_of_records_in_index_file(indexFile);
 
 		// Insert new node at the last of the index file
-		fseek(indexFile, getPositionToSeekInFile(no_records+1), SEEK_SET);
-		fwrite(newNode, sizeof(Node), 1, indexFile);
+		write_record_to_file_from_variable(&newNode, sizeof(Node), indexFile, no_records+1);
 
 		// Make this newNode the root, i.e. update the root number in index file
 		update_root_node_number(indexFile, no_records+1);
@@ -354,11 +415,17 @@ bool insertUtil(Node* root, datatype key, ull recordOffset, FILE* indexFile) {
 	}
 	else {
 		// Else find the leaf node that should contain the given key
-		Node* leafNode = findUtil(root, key);
+		ull leaf_node_number = findUtil(root, key, indexFile);
+
+		// Create memory for leafNode
+		Node* leafNode = (Node*)calloc(1, sizeof(Node));
+
+		// Load from file the node at leaf_node_number into leafNode
+		load_record_from_file_into_variable(&leafNode, sizeof(Node), indexFile, leaf_node_number);
 
 		// If this leaf node contains n-1 key values then insert in this leaf node
 		if (leafNode->keyCount < N-1) {
-			insertInLeaf(leafNode, key, recordOffset);
+			insertInLeaf(leaf_node_number, key, recordOffset, indexFile);
 		}
 		else {
 			// Else leafNode had n-1 key values already, split it
