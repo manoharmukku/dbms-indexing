@@ -19,7 +19,7 @@ int argc;
 char *file ;
 void print_welcome()
 {
-    printf("| \n|\n| CSDBMS : A simple Database Management System \n|\n");
+    printf("| \n|\n| A simple Database Management System using Indexing\n|\n");
     //printf("| \n| This project is open-sourced. To know more please visit \n");
     //printf("| %c[4mwww.github.com/senbihan/csdbms%c[0m \n",27,27);
     printf("| \n| Type 'help' to see the query syntax.\n| Type 'exit' to Exit.\n");
