@@ -14,9 +14,7 @@ This is a collaborative class project of Indian Statistical Institute, Kolkata f
 4. Delete Data
 5. Records Ordering
 6. Interactive UI
-
-**Next to be added:**
-1. Primary Key Constraint and Index File
+7. Primary Key Constraint and Index File
 
 
 **Dependency:**
@@ -25,4 +23,4 @@ This is a collaborative class project of Indian Statistical Institute, Kolkata f
 **Build and Run:**
 Command to build and run the project:
 `$ make`
-`$ ./bin/test`
+`$ ./bin/csdbms`
