@@ -16,6 +16,10 @@ This is a collaborative class project of Indian Statistical Institute, Kolkata f
 6. Interactive UI
 7. Primary Key Constraint and Index File
 
+**Things to do**:
+1. Delete code for Indexing
+2. Integration of indexingDelete with recordDelete
+
 
 **Dependency:**
 1. This project requires `gcc-7`. You can download from [here (Debian/Ubuntu)](https://packages.debian.org/buster/gcc-7-base)
